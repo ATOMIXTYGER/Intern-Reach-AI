@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: internreach_postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: internreach_user
+      POSTGRES_PASSWORD: internreach_password
+      POSTGRES_DB: internreach_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U internreach_user -d internreach_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  redis:
+    image: redis:7-alpine
+    container_name: internreach_redis
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  backend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.backend
+    container_name: internreach_backend
+    restart: unless-stopped
+    environment:
+      - DATABASE_URL=postgresql+asyncpg://internreach_user:internreach_password@postgres:5432/internreach_db
+      - REDIS_URL=redis://redis:6379/0
+      - MOCK_MODE=true
+      - JWT_SECRET=super-secret-jwt-key-internreach-ai-production-32char
+      - SESSION_SECRET=super-secret-session-key-production
+      - PRIMARY_LLM_PROVIDER=claude
+      - SEARCH_PROVIDER=tavily
+    ports:
+      - "8000:8000"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    volumes:
+      - ./uploads:/app/uploads
+
+  frontend:
+    build:
+      context: .
+      dockerfile: infra/Dockerfile.frontend
+    container_name: internreach_frontend
+    restart: unless-stopped
+    environment:
+      - NEXT_PUBLIC_API_URL=http://localhost:8000/api/v1
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+
+volumes:
+  postgres_data:
