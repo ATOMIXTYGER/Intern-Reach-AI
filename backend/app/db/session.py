@@ -3,11 +3,20 @@ from app.core.config import settings
 from app.db.base import Base
 
 connect_args = {}
-if settings.DATABASE_URL.startswith("sqlite"):
+db_url = settings.DATABASE_URL
+
+if db_url.startswith("sqlite"):
     connect_args["check_same_thread"] = False
+elif "supabase" in db_url or "sslmode=require" in db_url or "render.com" in db_url:
+    # Clean sslmode from query string if present because asyncpg takes ssl in connect_args
+    if "?sslmode=" in db_url:
+        db_url = db_url.split("?sslmode=")[0]
+    elif "&sslmode=" in db_url:
+        db_url = db_url.split("&sslmode=")[0]
+    connect_args["ssl"] = True
 
 engine = create_async_engine(
-    settings.DATABASE_URL,
+    db_url,
     echo=False,
     connect_args=connect_args,
     future=True
